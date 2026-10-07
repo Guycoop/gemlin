@@ -36,7 +36,8 @@ if ($LASTEXITCODE -ne 0) { throw "Gemlin didn't install. Scroll up to see why." 
 $bin = (& $uv tool dir --bin).Trim()
 $gemlin = Join-Path $bin "gemlin.exe"
 Write-Host "  ✓ Installed $(& $gemlin --version)"
-Write-Host "  ✓ $(& $gemlin app)"
+$app = & $gemlin app
+if ($LASTEXITCODE -eq 0) { Write-Host "  ✓ $app" } else { Write-Host "  ! $app" }
 
 if ($env:GEMLIN_NO_START) { return }
 

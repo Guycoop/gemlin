@@ -38,7 +38,7 @@ say "  Installing Gemlin and its own Python (this can take a minute the first ti
 BIN="$("$UV" tool dir --bin)"
 GEMLIN="$BIN/gemlin"
 say "  ✓ Installed $("$GEMLIN" --version)"
-"$GEMLIN" app | sed 's/^/  ✓ /'
+if app="$("$GEMLIN" app 2>&1)"; then say "  ✓ $app"; else say "  ! $app"; fi
 
 if [ -n "${GEMLIN_NO_START:-}" ]; then
     exit 0

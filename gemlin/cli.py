@@ -385,7 +385,12 @@ def app(args, home=None):
         system.remove_app(home)
         print("Removed the Gemlin app.")
         return 0
-    where = system.install_app(home)
+    try:
+        where = system.install_app(home)
+    except (OSError, subprocess.CalledProcessError) as e:
+        detail = (getattr(e, "stderr", None) or str(e)).strip().splitlines()
+        print(f"Couldn't add the Gemlin app: {detail[-1] if detail else e}. Gemlin still works: gemlin start")
+        return 1
     found = {"darwin": "in Applications, Launchpad and Spotlight", "win32": "in the Start menu"}.get(sys.platform,
                                                                                                      "in your app launcher")
     print(f"Added the Gemlin app ({where}). Find it {found}: opening it wakes Gemlin up.")

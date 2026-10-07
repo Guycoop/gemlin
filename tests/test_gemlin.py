@@ -364,3 +364,20 @@ def test_version_comparison():
 def test_update_from_source_says_git_pull(home, capsys):
     cli.main(["update"])  # the tests run from a git checkout
     assert "git pull" in capsys.readouterr().out
+
+
+def test_the_windows_shortcut_script_quotes_its_paths(monkeypatch):
+    from gemlin import system
+    monkeypatch.setattr(system, "python", lambda windowless=True: r"C:\Users\O'Neil\pythonw.exe")
+    script = system.shortcut_script(r"C:\Users\O'Neil\Start Menu\Gemlin.lnk")
+    assert "CreateShortcut('C:\\Users\\O''Neil\\Start Menu\\Gemlin.lnk')" in script  # ' doubled, inside quotes
+    assert "TargetPath = 'C:\\Users\\O''Neil\\pythonw.exe'" in script and "$args" not in script
+
+
+def test_app_install_failure_is_explained_not_a_traceback(home, monkeypatch, capsys):
+    from gemlin import system
+    def broken(home=None):
+        raise cli.subprocess.CalledProcessError(1, "powershell", stderr="Access is denied.")
+    monkeypatch.setattr(system, "install_app", broken)
+    assert cli.main(["app"]) == 1
+    assert "Couldn't add the Gemlin app: Access is denied." in capsys.readouterr().out

@@ -138,10 +138,8 @@ def install_app(home=None):
             subprocess.run([str(register), "-f", str(where)], capture_output=True)
     elif sys.platform == "win32":
         where.parent.mkdir(parents=True, exist_ok=True)
-        script = ("$s = (New-Object -ComObject WScript.Shell).CreateShortcut($args[0]); $s.TargetPath = $args[1]; "
-                  "$s.Arguments = '-m gemlin show'; $s.IconLocation = $args[2]; $s.Description = 'Gemlin'; $s.Save()")
-        subprocess.run(["powershell", "-NoProfile", "-Command", script, str(where), python(),
-                        str(ICONS / "windows" / "Gemlin.ico")], capture_output=True, check=True)
+        subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", shortcut_script(where)],
+                       capture_output=True, text=True, check=True)
     else:
         where.parent.mkdir(parents=True, exist_ok=True)
         where.write_text(desktop_entry("show"), encoding="utf-8")
@@ -151,6 +149,16 @@ def install_app(home=None):
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy(icon, target)
     return where
+
+
+def shortcut_script(where):
+    """PowerShell that makes the Start menu shortcut. (-Command doesn't pass extra arguments to the
+    script, so the paths go inside it, in single quotes, where only ' needs escaping.)"""
+    def quoted(text):
+        return "'" + str(text).replace("'", "''") + "'"
+    return (f"$s = (New-Object -ComObject WScript.Shell).CreateShortcut({quoted(where)}); "
+            f"$s.TargetPath = {quoted(python())}; $s.Arguments = '-m gemlin show'; "
+            f"$s.IconLocation = {quoted(ICONS / 'windows' / 'Gemlin.ico')}; $s.Description = 'Gemlin'; $s.Save()")
 
 
 def remove_app(home=None):

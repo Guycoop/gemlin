@@ -46,3 +46,11 @@ jobs:
           if (-not (Test-Path "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Gemlin.lnk")) { throw "no Start menu shortcut" }
           $uv = (Get-Command uv -ErrorAction SilentlyContinue).Source; if (-not $uv) { $uv = Join-Path $env:USERPROFILE ".local\bin\uv.exe" }
           & (Join-Path (& $uv tool dir).Trim() "gemlin\Scripts\python.exe") -c "import pystray, PIL; print('tray ok')"
+      - name: install.ps1 again, on Windows PowerShell 5.1 (the default for irm | iex)
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          $env:GEMLIN_SOURCE = "file:///" + ($PWD.Path -replace '\\', '/')
+          $env:GEMLIN_NO_START = "1"
+          ./site/install.ps1
+          & (Join-Path $env:USERPROFILE ".local\bin\gemlin.exe") --version

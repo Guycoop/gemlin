@@ -9,6 +9,8 @@
 #   4. Adds Gemlin to the Start menu.
 #   5. Wakes Gemlin up, and asks whether it should wake up whenever you log in.
 # Run it again any time to update Gemlin. To remove it: gemlin uninstall
+# Keep this file plain ASCII: Windows PowerShell 5.1 reads BOM-less files as Windows-1252,
+# where UTF-8 symbols like a check mark turn into stray quote characters and break parsing.
 $ErrorActionPreference = "Stop"
 
 $Source = if ($env:GEMLIN_SOURCE) { $env:GEMLIN_SOURCE } else { "https://github.com/alexinslc/gemlin/archive/refs/heads/main.zip" }
@@ -31,13 +33,17 @@ if (-not $uv) {
 Write-Host "  Installing Gemlin and its own Python (this can take a minute the first time)..."
 & $uv tool install --quiet --force --python $PythonVersion "gemlin @ $Source"
 if ($LASTEXITCODE -ne 0) { throw "Gemlin didn't install. Scroll up to see why." }
+# uv prints notes like "already in PATH" to stderr. Windows PowerShell 5.1 turns redirected
+# native stderr into errors, which "Stop" would make fatal, so relax it for this one call.
+$ErrorActionPreference = "Continue"
 & $uv tool update-shell *> $null
+$ErrorActionPreference = "Stop"
 
 $bin = (& $uv tool dir --bin).Trim()
 $gemlin = Join-Path $bin "gemlin.exe"
-Write-Host "  ✓ Installed $(& $gemlin --version)"
+Write-Host "  [ok] Installed $(& $gemlin --version)"
 $app = & $gemlin app
-if ($LASTEXITCODE -eq 0) { Write-Host "  ✓ $app" } else { Write-Host "  ! $app" }
+if ($LASTEXITCODE -eq 0) { Write-Host "  [ok] $app" } else { Write-Host "  [!] $app" }
 
 if ($env:GEMLIN_NO_START) { return }
 

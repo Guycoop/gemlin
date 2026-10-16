@@ -63,7 +63,7 @@ def test_the_workbench_writes_fixes_and_saves(tmp_path, monkeypatch):
     monkeypatch.setattr(develop, "write", lambda client, request, code=None, ran=None: asked.append(request) or next(drafts))
     typed = iter(["s", "c", "", "s"])  # save (refused: problems), change (Enter = fix them), save
     monkeypatch.setattr("builtins.input", lambda prompt="": next(typed))
-    assert develop.session(client=None, request="list my home files") == 0
+    assert develop.session(brain=None, request="list my home files") == 0
     assert asked[1].startswith("Fix the problems above") and "docstring" in asked[1]
     assert (tmp_path / "skills" / "home_files.py").read_text() == GOOD
     assert core.fingerprint(GOOD) in (tmp_path / "trusted").read_text()  # you saved it, so it won't ask again

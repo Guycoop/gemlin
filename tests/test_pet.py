@@ -187,7 +187,7 @@ def fake_system(monkeypatch):
 
 def test_the_menu_has_everything(fake_system):
     actions = [entry[1] for entry in brain().menu() if entry]
-    assert actions == ["chat", "customize", "wander", "autostart", "log", "update", "restart", "sleep"]
+    assert actions == ["chat", "customize", "wander", "autostart", "local", "log", "update", "restart", "sleep"]
 
 
 def test_menu_actions(fake_system, tmp_path, monkeypatch):
@@ -210,7 +210,7 @@ def test_menu_actions(fake_system, tmp_path, monkeypatch):
 
 
 @pytest.mark.parametrize("source, latest, says, updates", [
-    (True, "9.9.9", "git pull", False),
+    (True, "9.9.9", "Pulling the newest code", True),
     (False, None, "couldn't reach", False),
     (False, "0.0.1", "up to date", False),
     (False, "99.0.0", "Updating to version 99.0.0", True),

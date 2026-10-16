@@ -361,9 +361,33 @@ def test_version_comparison():
     assert system.newer("0.10.0", "0.9.9") and not system.newer("0.3.0", "0.3.0") and not system.newer("0.2.9", "0.3.0")
 
 
-def test_update_from_source_says_git_pull(home, capsys):
-    cli.main(["update"])  # the tests run from a git checkout
-    assert "git pull" in capsys.readouterr().out
+def test_update_from_source_pulls_and_reinstalls(home, monkeypatch, capsys):
+    ran = []
+    monkeypatch.setattr(cli.subprocess, "run", lambda cmd, **kw: ran.append(cmd) or
+                        cli.subprocess.CompletedProcess(cmd, 0, stdout="Already up to date.", stderr=""))
+    assert cli.main(["update"]) == 0  # the tests run from a git checkout
+    assert ran[0][:2] == ["git", "-C"] and ran[0][-2:] == ["pull", "--ff-only"]
+    assert ran[1][1:5] == ["-m", "pip", "install", "-q"]
+    assert "Up to date" in capsys.readouterr().out
+
+
+def test_gemlin_model_switches_brains(home, monkeypatch, capsys):
+    from gemlin import models
+
+    class FakeLocal:
+        model, label = "google/gemma-4-e4b", "google/gemma-4-e4b on this computer (LM Studio)"
+
+        def __init__(self, name=None):
+            pass
+    monkeypatch.setattr(models, "Local", FakeLocal)
+    assert cli.main(["model", "local"]) == 0
+    assert models.source() == "local" and paths.config()["local_model"] == "google/gemma-4-e4b"
+    assert cli.main(["model", "google"]) == 0 and models.source() == "google"
+    def missing(name=None):
+        raise models.LocalError("I can't find Gemma on this computer.")
+    monkeypatch.setattr(models, "Local", missing)
+    assert cli.main(["model", "local"]) == 1 and models.source() == "google"
+    assert "can't find Gemma" in capsys.readouterr().out
 
 
 def test_the_windows_shortcut_script_quotes_its_paths(monkeypatch):

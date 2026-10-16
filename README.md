@@ -60,6 +60,18 @@ Your edits take effect after `gemlin restart`. In a new terminal, run the activa
 | Restart | Starts Gemlin fresh (after you add a skill, for example) |
 | Go to sleep | Quits Gemlin. Open the app to wake it again |
 
+## Gemma on your own computer
+
+Gemlin can think with Gemma running **on your computer** instead of Google's servers: no API key, nothing leaves your machine, and it keeps working when Google's API is having a bad day.
+
+1. Install [LM Studio](https://lmstudio.ai) (or [Ollama](https://ollama.com)) and download a Gemma 4 model in it. `google/gemma-4-e4b` is small and quick; `google/gemma-4-12b` is smarter if you have the memory (16 GB+).
+2. Switch Gemlin over, any one of these ways:
+   - right-click Gemlin (or its menu bar / tray icon) → **Think on this computer**
+   - `gemlin model local` (add `--name google/gemma-4-12b` to pick a model)
+   - type `local` when Gemlin asks for a key
+
+Gemlin starts LM Studio's server for you if it's installed. The first answer takes a little longer while the model loads. `gemlin model` shows where Gemlin thinks and which local models it found; `gemlin model google` switches back.
+
 ## The `gemlin` command
 
 | Command | What it does |
@@ -76,7 +88,8 @@ Your edits take effect after `gemlin restart`. In a new terminal, run the activa
 | `gemlin autostart on` | Wakes Gemlin up whenever you log in (`off` turns it off) |
 | `gemlin show` | Wakes Gemlin up, or opens its chat if it's awake (what the app does) |
 | `gemlin app` | Adds the Gemlin app to Applications / the Start menu / your launcher (`gemlin app remove` takes it out) |
-| `gemlin update` | Updates to the newest version |
+| `gemlin model local` | Thinks with Gemma on this computer (LM Studio / Ollama); `gemlin model google` switches back |
+| `gemlin update` | Updates to the newest version (from a source checkout: `git pull` and reinstall, then restart) |
 | `gemlin uninstall` | Puts Gemlin to sleep and removes its app and login item |
 | `gemlin develop IDEA` | Builds a new skill with Gemma's help: try it, change it, save it (see [Extending Gemlin](#extending-gemlin)) |
 
@@ -168,7 +181,7 @@ Key dependencies: the official [`google-genai`](https://googleapis.github.io/pyt
 ## Troubleshooting
 
 - **`gemlin: command not found`**: open a new terminal after installing. Installed from source? Activate the virtual environment first (`source .venv/bin/activate`, or `.venv\Scripts\activate` on Windows), in the gemlin folder.
-- **"rate limited"**: wait about 30 seconds, or switch `MODEL` to `gemma-4-31b-it`. Each skill Gemlin uses counts as an extra request.
+- **"rate limited" or Google errors**: wait about 30 seconds, or switch `MODEL` to `gemma-4-31b-it`, or skip Google entirely: `gemlin model local` (see [Gemma on your own computer](#gemma-on-your-own-computer)). Each skill Gemlin uses counts as an extra request.
 - **"Missing or invalid API key"**: run `gemlin setup` again.
 - **Gemlin didn't appear**: `gemlin logs` shows why. `gemlin status` says whether it's awake. `gemlin setup` checks for the desktop window pieces: on a Mac, `pip install -e .` installs them; on Linux, `sudo apt install python3-tk`.
 - **API error 400 mentioning thinking**: comment out the `thinking_config=` line in `new_chat()` in `gemlin/core.py`.

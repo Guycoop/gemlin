@@ -6,7 +6,7 @@ their file hoarding. Keep replies short."""
 
 # Made your Gemlin at gemlin.dev/create? Its name and personality (saved by `gemlin look`) win over these.
 
-MODEL = "gemma-4-26b-a4b-it"  # rate limited? switch to "gemma-4-31b-it"
+MODEL = "gemma-4-26b-a4b-it"  # on Google. Rate limited? switch to "gemma-4-31b-it" (or run Gemma locally: gemlin model local)
 
 # ruff: noqa: E401, E402  (config goes first so it is easy to edit live)
 import functools, hashlib, heapq, json, os, queue, re, shutil, subprocess, sys, threading, time
@@ -16,8 +16,8 @@ with suppress(ImportError):
     import readline  # noqa: F401  arrow keys + history at the you> prompt (Mac/Linux)
 import psutil
 from google import genai
-from google.genai import errors, types
-from . import develop, paths, pet
+from google.genai import errors
+from . import develop, models, paths, pet
 
 NOTE = """
 (System note: your tools and skills see file names, sizes, dates, processes, disk
@@ -35,7 +35,7 @@ COMMANDS = """Things you can type here:
   /develop IDEA   I write a new skill for IDEA (you read it and say yes or no)
   /skills         what I know how to do
   /help           this list"""
-TOOLS, needs_reload, client, pet_proc = [], False, None, None
+TOOLS, needs_reload, brain, pet_proc = [], False, None, None
 inbox = queue.Queue()  # ("you", line) from the terminal, ("pet", line) from the pet's chat box,
                        # ("answer", (id, yes)) from the pet's yes/no window, ("gone", None) if the pet closed
 asked = 0  # numbers each yes/no question, so a late answer can't approve the wrong thing
@@ -263,13 +263,34 @@ def learn_skill(name: str, description: str, code: str) -> str:
     needs_reload = True  # the main loop rebuilds the chat so the new tool shows up
     return f"Installed {name}. You can call it on your next turn."
 
-def new_chat(history=None):
-    config = types.GenerateContentConfig(
-        system_instruction=PERSONA + NOTE,
-        tools=list(TOOLS),  # plain Python functions = automatic function calling
-        thinking_config=types.ThinkingConfig(thinking_level="minimal"),  # "high" = smarter, slower
-    )
-    return client.chats.create(model=MODEL, config=config, history=history or [])
+def new_chat(history=None):  # Gemma, with its personality and every tool and skill (see models.py)
+    return brain.new_chat(PERSONA + NOTE, TOOLS, history)
+
+def wake_brain():
+    """Gemma on this computer (gemlin model local), or on Google with your key."""
+    if models.source() == "local":
+        try:
+            return models.Local()
+        except models.LocalError as e:
+            print(f"  {e}")
+            if not paths.api_key():
+                tell_pet(do="say", text=str(e))
+                return None
+            print("  Using Gemma on Google for now.")
+            tell_pet(do="say", text=f"{e} I'll think on Google's servers for now.")
+    key = paths.api_key() or get_key()  # no key yet? Gemlin coaches you through getting one
+    if key == "local":  # chose Gemma on this computer instead
+        return wake_brain()
+    return models.Google(key, MODEL) if key else None
+
+def use_local():
+    """Typed "local" instead of a key: switch to Gemma on this computer, if it's here."""
+    try:
+        found = models.Local()
+    except models.LocalError as e:
+        return str(e)
+    models.use("local", found.model)
+    return None
 
 def load_skills():
     """Built-in skills come with Gemlin and load right away. Yours (in ~/.gemlin/skills) ask first
@@ -318,7 +339,8 @@ def get_key():
     """No API key yet: coach the owner through getting one, in the pet's window (or the terminal)."""
     if not pet_alive():
         print(f"{NAME} needs a free Gemini API key before it can think. Get one at {KEY_PAGE}\n"
-              "  (sign in with Google, click Create API key, copy it), then paste it here.")
+              "  (sign in with Google, click Create API key, copy it), then paste it here.\n"
+              "  Or type local to use Gemma on this computer (LM Studio or Ollama).")
         from getpass import getpass
         while True:
             try:
@@ -327,6 +349,11 @@ def get_key():
                 return None
             if not key:
                 return None
+            if key.lower() == "local":
+                if problem := use_local():
+                    print(f"  {problem}")
+                    continue
+                return "local"
             problem = check_key(key)
             if problem in (None, "offline"):
                 paths.save_api_key(key)
@@ -336,7 +363,8 @@ def get_key():
     tell_pet(do="need_key", url=KEY_PAGE)
     tell_pet(do="say", text=f"Hi! I'm {NAME}. Before I can think, I need a free key from Google. It takes "
              "about a minute. 1. Click “Get a free key” below: Google AI Studio opens. 2. Sign in with your "
-             "Google account and click “Create API key”. 3. Copy the key, paste it in my box, and press Enter.")
+             "Google account and click “Create API key”. 3. Copy the key, paste it in my box, and press Enter. "
+             "(Have LM Studio or Ollama with Gemma? Type local and I'll think on this computer instead.)")
     print(f"{NAME} is waiting for an API key in its window (or run: gemlin setup).")
     while True:
         source, text = next_line("pet", "you", "gone")
@@ -345,6 +373,15 @@ def get_key():
         if text is None:
             continue
         key = text.strip()
+        if key.lower() == "local":
+            tell_pet(do="think")
+            if problem := use_local():
+                tell_pet(do="say", text=problem)
+                continue
+            print("  Thinking on this computer from now on (gemlin model google switches back).")
+            tell_pet(do="key_ok")
+            tell_pet(do="say", text="OK! I'll think right here on this computer. What can I do for you?")
+            return "local"
         if not looks_like_key(key):
             tell_pet(do="say", text="That doesn't look like a key. It's one long code, usually starting with "
                      "“AIza”. Click “Get a free key” if you don't have one yet.")
@@ -394,7 +431,7 @@ def slash_command(msg):
 def main(desktop=True, background=False):
     """Wake Gemlin up. desktop: open the pet (chat in its window). background: started by
     `gemlin start`, with no terminal attached, so the pet is the only way in."""
-    global client, needs_reload, NAME, PERSONA, terminal_open
+    global brain, needs_reload, NAME, PERSONA, terminal_open
     if background:
         sys.stdout.reconfigure(line_buffering=True)  # the log file shows each line right away
     if pet.SETTINGS.exists():  # made at gemlin.dev/create
@@ -404,11 +441,10 @@ def main(desktop=True, background=False):
         threading.Thread(target=read_terminal, daemon=True).start()
     if desktop:
         start_pet()
-    key = paths.api_key() or get_key()  # no key yet? Gemlin coaches you through getting one
-    if not key:
+    brain = wake_brain()
+    if not brain:
         tell_pet(do="bye")
         sys.exit(KEY_HELP)
-    client = genai.Client(api_key=key)
     load_skills()
     chat = new_chat()
     tell_pet(do="idle")
@@ -417,12 +453,12 @@ def main(desktop=True, background=False):
                  "name, personality, hat and colors. Then paste the code back here in my chat box.")
         paths.save_config(offered_customize=True)  # just once
     if background:
-        print(f"{NAME} wakes up on your desktop ({MODEL}, {len(TOOLS)} tools). To stop: gemlin stop")
+        print(f"{NAME} wakes up on your desktop ({brain.label}, {len(TOOLS)} tools). To stop: gemlin stop")
     elif pet_proc:
-        print(f"{NAME} wakes up on your desktop ({MODEL}, {len(TOOLS)} tools). Chat with it in its little window.\n"
+        print(f"{NAME} wakes up on your desktop ({brain.label}, {len(TOOLS)} tools). Chat with it in its little window.\n"
               f"  This terminal shows what {NAME} is doing. To stop: right-click {NAME} > Go to sleep (or type quit here).")
     else:
-        print(f"{NAME} wakes up ({MODEL}, {len(TOOLS)} tools). Type 'quit' to leave.")
+        print(f"{NAME} wakes up ({brain.label}, {len(TOOLS)} tools). Type 'quit' to leave.")
     while True:
         try:
             if not pet_alive():
@@ -470,10 +506,13 @@ def main(desktop=True, background=False):
                 tell_pet(do="say", text=reply.text or "...")
         except (EOFError, KeyboardInterrupt):
             break
+        except models.LocalError as e:
+            print(f"{NAME}> ({e})")
+            tell_pet(do="say", text=f"Hmm. {e}")
         except errors.APIError as e:
             tell_pet(do="oops")
             if e.code in (429, 503):
-                print(f"{NAME}> (rate limited) Wait ~30s or switch MODEL to gemma-4-31b-it.")
+                print(f"{NAME}> (rate limited) Wait ~30s, switch MODEL to gemma-4-31b-it, or run Gemma here: gemlin model local")
             elif e.code == 500:
                 print(f"{NAME}> (Google hiccup, error 500) Just send that again.")
             else:

@@ -14,7 +14,8 @@
   gemlin autostart on     wake Gemlin up whenever you log in (off turns it off)
   gemlin show             wake Gemlin up, or open its chat if it's awake (what the Gemlin app does)
   gemlin app              add Gemlin to Applications / the Start menu / your app launcher
-  gemlin update           update to the newest version
+  gemlin model local      think with Gemma on this computer (LM Studio / Ollama); google switches back
+  gemlin update           update to the newest version (a source checkout: git pull + reinstall)
   gemlin uninstall        put it to sleep and remove its app and login item
 """
 import argparse
@@ -65,8 +66,16 @@ def ask_yes(question, default=True):
 def setup(args):
     print(f"Setting up Gemlin {__version__}\n")
     ok = check_parts()
+    from . import models
     key = paths.api_key()
-    if key and not ask_yes("  You already have an API key saved. Replace it?", default=False):
+    found = models.find_server(start=False) if not key and models.source() != "local" else None
+    local = found and models.pick_model(found[2])
+    if models.source() == "local":
+        print("  ✓ Gemlin thinks with Gemma on this computer (gemlin model google switches to Google)")
+    elif local and ask_yes(f"  {found[0]} with {local} is on this computer. Let Gemlin think here (no key needed)?"):
+        models.use("local", local)
+        print(f"  ✓ Gemlin will think with {local} on this computer")
+    elif key and not ask_yes("  You already have an API key saved. Replace it?", default=False):
         print("  ✓ Keeping your API key")
     else:
         key = ask_key()
@@ -136,7 +145,8 @@ def start(args):
     if proc := running():
         print(f"{name()} is already awake (gemlin restart to restart it).")
         return 0
-    no_key = not paths.api_key()
+    from . import models
+    no_key = not paths.api_key() and models.source() != "local"
     paths.HOME.mkdir(parents=True, exist_ok=True)
     log = paths.LOG.open("a", encoding="utf-8")
     log.write(f"\n===== {time.strftime('%Y-%m-%d %H:%M:%S')} gemlin start =====\n")
@@ -196,7 +206,11 @@ def status(args):
         print(f"{name()} is awake (for {awake // 3600}h {awake % 3600 // 60}m).")
     else:
         print(f"{name()} is asleep. Wake it up with:  gemlin start")
-    print(f"  API key: {'saved' if paths.api_key() else 'missing (run gemlin setup)'}")
+    from . import core, models
+    local = models.source() == "local"
+    print(f"  Thinks:  {'with Gemma on this computer' if local else 'with ' + core.MODEL + ' on Google'}  (gemlin model)")
+    if not local:
+        print(f"  API key: {'saved' if paths.api_key() else 'missing (run gemlin setup)'}")
     print(f"  Look:    {'yours, from gemlin.dev' if paths.LOOK.exists() else 'the default (make yours at ' + CREATOR + ')'}")
     from . import system
     print(f"  Wakes up at login: {'yes' if system.autostart_enabled() else 'no (gemlin autostart on)'}")
@@ -317,14 +331,17 @@ def add_skill(file):
 
 
 def develop(args):
-    key = paths.api_key()
-    if not key:
-        print("Gemma needs your API key to write skills. Run:  gemlin setup")
-        return 1
-    from google import genai
-
+    from . import core, models
     from . import develop as workbench
-    client = genai.Client(api_key=key)
+    try:
+        key = paths.api_key()
+        client = models.Local() if models.source() == "local" else (models.Google(key, core.MODEL) if key else None)
+    except models.LocalError as e:
+        print(e)
+        return 1
+    if not client:
+        print("Gemma needs your API key to write skills (gemlin setup), or run it here: gemlin model local")
+        return 1
     if args.edit:
         path = paths.SKILLS / f"{args.edit}.py"
         if not path.exists():
@@ -397,11 +414,62 @@ def app(args, home=None):
     return 0
 
 
+def model(args):
+    """Where Gemlin thinks: Gemma on Google's servers, or Gemma on this computer (LM Studio / Ollama)."""
+    from . import core, models
+    if args.where == "local":
+        try:
+            found = models.Local(args.name)
+        except models.LocalError as e:
+            print(e)
+            return 1
+        models.use("local", found.model)
+        print(f"Gemlin thinks on this computer now: {found.label}. Nothing leaves your machine.")
+    elif args.where == "google":
+        models.use("google")
+        print(f"Gemlin thinks with {core.MODEL} on Google now." + ("" if paths.api_key() else " It needs a key: gemlin setup"))
+    else:
+        where = models.source()
+        local = paths.config().get("local_model") or "the best Gemma it finds"
+        print(f"Gemlin thinks {'on this computer with ' + local if where == 'local' else 'with ' + core.MODEL + ' on Google'}.")
+        found = models.find_server(start=False)
+        if found:
+            print(f"  On this computer: {found[0]} with " + (", ".join(found[2]) or "no models yet"))
+        else:
+            print("  On this computer: no LM Studio or Ollama running" + (" (LM Studio is installed)" if models.lms_installed() else ""))
+        print("  Switch with:  gemlin model local   or   gemlin model google   (--name MODEL picks a local model)")
+        return 0
+    if running():
+        print("Restarting so it takes effect...")
+        return restart(args)
+    return 0
+
+
+def update_from_source():
+    """A git checkout: pull the newest code, then make sure its dependencies are installed."""
+    repo = paths.PACKAGE.parent
+    print(f"Updating the source folder {repo} ...")
+    pulled = subprocess.run(["git", "-C", str(repo), "pull", "--ff-only"], capture_output=True, text=True)
+    print("  " + (pulled.stdout or pulled.stderr).strip().replace("\n", "\n  "))
+    if pulled.returncode != 0:
+        print("  Couldn't pull (local changes, or a different branch?). Sort it out in that folder, then gemlin restart.")
+        return 1
+    installed = subprocess.run([sys.executable, "-m", "pip", "install", "-q", "-e", str(repo)], capture_output=True, text=True)
+    if installed.returncode != 0:
+        print("  The code updated, but installing its dependencies didn't. Run there:  pip install -e .")
+    return 0
+
+
 def update(args):
     from . import system
     if system.installed_from_source():
-        print(f"This Gemlin runs from the source folder {paths.PACKAGE.parent}.\n"
-              "Update it there with:  git pull   then:  gemlin restart")
+        was_awake = running() is not None
+        if update_from_source() != 0:
+            return 1
+        if was_awake:
+            print("Restarting with the new code...")
+            return restart(args)
+        print("✓ Up to date. Start it with: gemlin start")
         return 0
     latest = system.latest_version()
     if latest is None:
@@ -485,6 +553,10 @@ def main(argv=None):
     p = commands.add_parser("app", help="add Gemlin to Applications / the Start menu (remove takes it out)")
     p.add_argument("action", nargs="?", choices=["install", "remove"], default="install")
     p.set_defaults(fn=app)
+    p = commands.add_parser("model", help="where Gemlin thinks: local (this computer) or google")
+    p.add_argument("where", nargs="?", choices=["local", "google"])
+    p.add_argument("--name", help="which local model to use (from LM Studio or Ollama)")
+    p.set_defaults(fn=model)
     p = commands.add_parser("update", help="update Gemlin to the newest version")
     p.add_argument("--force", action="store_true", help="reinstall even if it's up to date")
     p.set_defaults(fn=update)
@@ -495,8 +567,8 @@ def main(argv=None):
     args = parser.parse_args(argv)
     if not args.command:
         status(args)
-        print("\nCommands: start, stop, restart, status, show, setup, look, chat, logs, skills, develop, autostart, app,\n"
-              "          update, uninstall  (gemlin --help)")
+        print("\nCommands: start, stop, restart, status, show, setup, look, chat, logs, skills, develop, model,\n"
+              "          autostart, app, update, uninstall  (gemlin --help)")
         return 0
     return args.fn(args) or 0
 

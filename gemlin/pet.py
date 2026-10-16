@@ -16,7 +16,7 @@ core.py and the pet talk with one JSON message per line:
 import base64, functools, json, queue, random, re, struct, sys, threading, webbrowser, zlib
 from contextlib import suppress
 
-from . import paths
+from . import models, paths
 from .paths import ART, LOOK as SETTINGS
 DEFAULTS = {
     "name": "Gemlin",
@@ -273,6 +273,8 @@ class Brain:
             self.say("oops! something went wrong. Look in the terminal.", seconds=5)
         elif do == "bye":
             self.sleep()
+        elif do == "bye_with":  # going to sleep with something to say (switching brains)
+            self.sleep(str(event.get("text") or "bye!"))
         elif do == "need_key":
             self.needs_key, self.chatting = True, True
             self.button = ("Get a free key", str(event.get("url") or "https://aistudio.google.com/apikey"))
@@ -367,7 +369,8 @@ class Brain:
         Each entry is (label, action, checked or None); None draws a line."""
         from . import system
         return [("Chat", "chat", None), ("Customize me…", "customize", None), None,
-                ("Walk around", "wander", self.wander), ("Wake up at login", "autostart", system.autostart_enabled()), None,
+                ("Walk around", "wander", self.wander), ("Wake up at login", "autostart", system.autostart_enabled()),
+                ("Think on this computer", "local", models.source() == "local"), None,
                 ("What I've been doing…", "log", None), ("Check for updates…", "update", None),
                 ("Restart", "restart", None), None, ("Go to sleep", "sleep", None)]
 
@@ -392,6 +395,14 @@ class Brain:
         elif action == "update":
             self.set_mode("think", "checking for updates...")
             threading.Thread(target=self.check_for_updates, daemon=True).start()
+        elif action == "local":  # switch brains: Gemma here (LM Studio / Ollama) or on Google
+            if models.source() == "local":
+                models.use("google")
+                system.run_in_background("restart")
+                self.sleep("Switching to Google's servers. Be right back!")
+            else:
+                self.set_mode("think", "looking for Gemma on this computer...")
+                threading.Thread(target=self.go_local, daemon=True).start()
         elif action == "restart":
             system.run_in_background("restart")
             self.sleep("Be right back!")  # the restart starts a fresh Gemlin; this one bows out
@@ -399,10 +410,22 @@ class Brain:
             self.quit()
         return None
 
+    def go_local(self):  # in a thread: finding (or starting) LM Studio can take a few seconds
+        from . import system
+        try:
+            found = models.Local()
+        except models.LocalError as e:
+            self.events.put({"do": "say", "text": str(e)})
+            return
+        models.use("local", found.model)
+        system.run_in_background("restart")
+        self.events.put({"do": "bye_with", "text": f"Switching to {found.model} on this computer. Be right back!"})
+
     def check_for_updates(self):  # in a thread, so Gemlin keeps moving while it asks GitHub
         from . import __version__, system
         if system.installed_from_source():
-            text = "You're running me from source. Update me with git pull, then Restart."
+            text = "Pulling the newest code. I'll be right back!"
+            system.run_in_background("update")
         elif (latest := system.latest_version()) is None:
             text = "I couldn't reach GitHub to check. Try again in a bit."
         elif not system.newer(latest):

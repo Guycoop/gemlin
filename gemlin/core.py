@@ -6,7 +6,7 @@ their file hoarding. Keep replies short."""
 
 # Made your Gemlin at gemlin.dev/create? Its name and personality (saved by `gemlin look`) win over these.
 
-MODEL = "gemma-4-26b-a4b-it"  # on Google. Rate limited? switch to "gemma-4-31b-it" (or run Gemma locally: gemlin model local)
+MODEL = "gemma-4-31b-it"  # TEMPORARY switch for testing to reduce Google rate limits. Revert after testing (original: gemma-4-26b-a4b-it)
 
 # ruff: noqa: E401, E402  (config goes first so it is easy to edit live)
 import functools, hashlib, heapq, json, os, queue, re, shutil, subprocess, sys, threading, time

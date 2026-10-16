@@ -32,6 +32,7 @@ jobs:
           GEMLIN_SOURCE="file://$PWD" GEMLIN_NO_START=1 sh site/install.sh
           "$HOME/.local/bin/gemlin" --version
           "$HOME/.local/bin/gemlin" skills
+          if [ "$RUNNER_OS" = macOS ]; then test -x "$HOME/Applications/Gemlin.app/Contents/MacOS/Gemlin"; else test -f "$HOME/.local/share/applications/gemlin.desktop"; fi
       - name: install.ps1
         if: runner.os == 'Windows'
         shell: pwsh
@@ -42,6 +43,9 @@ jobs:
           $gemlin = Join-Path $env:USERPROFILE ".local\bin\gemlin.exe"
           & $gemlin --version
           & $gemlin skills
+          if (-not (Test-Path "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Gemlin.lnk")) { throw "no Start menu shortcut" }
+          $uv = (Get-Command uv -ErrorAction SilentlyContinue).Source; if (-not $uv) { $uv = Join-Path $env:USERPROFILE ".local\bin\uv.exe" }
+          & (Join-Path (& $uv tool dir).Trim() "gemlin\Scripts\python.exe") -c "import pystray, PIL; print('tray ok')"
       - name: install.ps1 again, on Windows PowerShell 5.1 (the default for irm | iex)
         if: runner.os == 'Windows'
         shell: powershell

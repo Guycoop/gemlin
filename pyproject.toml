@@ -13,6 +13,7 @@ dependencies = [
   "google-genai~=2.28.0",
   "psutil~=7.2",
   "pyobjc-framework-Cocoa~=12.2; sys_platform == 'darwin'",  # the see-through desktop window on Mac
+  "pystray>=0.19; sys_platform == 'win32'",  # Gemlin's icon in the Windows system tray
 ]
 
 [project.scripts]
@@ -29,4 +30,4 @@ packages = ["gemlin"]
 version = { attr = "gemlin.__version__" }
 
 [tool.setuptools.package-data]
-gemlin = ["art/**/*", "skills/*.py"]
+gemlin = ["art/**/*", "icons/**/*", "skills/*.py"]

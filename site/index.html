@@ -7,7 +7,12 @@
 <meta name="description" content="A tiny AI creature that lives on your desktop, keeps an eye on your Downloads, and teaches itself new tricks. You approve every one.">
 <meta property="og:title" content="Gemlin">
 <meta property="og:description" content="A tiny AI creature that lives on your desktop and teaches itself new tricks. Powered by Gemma.">
+<meta property="og:image" content="https://gemlin.dev/social/share-card.png">
+<meta property="og:url" content="https://gemlin.dev/">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://gemlin.dev/social/share-card.png">
 <link rel="icon" href="/favicon.png">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@600;700&display=swap">
 <style>
@@ -197,7 +202,7 @@ footer a { color: var(--muted); }
         <p class="muted" data-os-only="mac">On a Mac, open <b>Terminal</b> (press ⌘ Space and type Terminal). It installs Gemlin with its own Python, so nothing else on your computer changes. <a href="/install.sh">Read the script</a>.</p>
         <p class="muted" data-os-only="windows" hidden>Open <b>PowerShell</b> from the Start menu. It installs Gemlin with its own Python, so nothing else on your computer changes. <a href="/install.ps1">Read the script</a>.</p></div></li>
       <li><div class="body"><h3>Say hi</h3>
-        <p class="muted">Gemlin wakes up on your desktop with its chat window open. The first time, it helps you get a free Google API key right there: click <b>Get a free key</b>, then paste the key into its chat box. The installer also asks whether Gemlin should wake up whenever you log in.</p></div></li>
+        <p class="muted">Gemlin wakes up on your desktop with its chat window open, and you can close the terminal. The first time, it helps you get a free Google API key right there: click <b>Get a free key</b>, then paste the key into its chat box. The installer also adds the Gemlin app and asks whether Gemlin should wake up whenever you log in. No Google account, or want everything offline? With <a href="https://lmstudio.ai">LM Studio</a> or <a href="https://ollama.com">Ollama</a> and a Gemma model, type <code>local</code> instead of a key.</p></div></li>
       <li><div class="body"><h3>Make it yours</h3>
         <p class="muted">Click <b>Customize me</b> under Gemlin's chat box (or open <a href="/create/">the creator</a>), pick a name, personality, hat and colors, then paste the code back into its chat.</p></div></li>
     </ol>
@@ -220,8 +225,18 @@ gemlin start<button type="button">Copy</button></div>
     </details>
   </section>
 
+  <section id="no-terminal" aria-labelledby="no-terminal-title">
+    <h2 id="no-terminal-title">No terminal needed</h2>
+    <div class="cards">
+      <article class="card"><span class="tag">the app</span><h3>Open Gemlin like any app</h3><p>Find it in Launchpad, Spotlight or Applications on a Mac, or in the Start menu on Windows. Opening it wakes Gemlin up, or brings up its chat if it's already awake.</p></article>
+      <article class="card"><span class="tag">menu bar &amp; tray</span><h3>Always one click away</h3><p>Gemlin stays out of your Dock and lives in the Mac menu bar (or the Windows system tray), with its whole menu: chat, customize, walk around or stay put, wake up at login, updates.</p></article>
+      <article class="card"><span class="tag">right-click</span><h3>Or just right-click Gemlin</h3><p>The same menu, right on the creature. <i>Go to sleep</i> puts Gemlin away until you open the app again.</p></article>
+    </div>
+  </section>
+
   <section id="commands" aria-labelledby="commands-title">
     <h2 id="commands-title">The gemlin command</h2>
+    <p class="muted">Everything is also a command, for people who like terminals.</p>
     <div class="table-wrap">
       <table>
         <tbody>
@@ -235,6 +250,9 @@ gemlin start<button type="button">Copy</button></div>
           <tr><td><code>gemlin skills</code></td><td>List its skills; <code>skills add FILE</code> adds one someone shared</td></tr>
           <tr><td><code>gemlin develop IDEA</code></td><td>Build a new skill with Gemma's help</td></tr>
           <tr><td><code>gemlin logs</code></td><td>See what Gemlin has been doing</td></tr>
+          <tr><td><code>gemlin model local</code></td><td>Think with Gemma on your own computer (LM Studio or Ollama): no key, nothing leaves your laptop</td></tr>
+          <tr><td><code>gemlin update</code></td><td>Update to the newest version (or <i>Check for updates…</i> in its menu)</td></tr>
+          <tr><td><code>gemlin uninstall</code></td><td>Put it to sleep and remove its app and login item</td></tr>
         </tbody>
       </table>
     </div>

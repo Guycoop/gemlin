@@ -11,10 +11,12 @@ import objc
 from Foundation import NSData, NSMakeRect, NSObject, NSRunLoop, NSRunLoopCommonModes, NSTimer
 from PyObjCTools import AppHelper
 
+from .paths import PACKAGE
 from .pet import (HOP, INK, MUTED, PAD, PAPER, SCALE, SIZE, TAIL, TEXT_WIDTH, TICK, Brain, above_pet, beside_pet,
                  bubble_shape, png, review_spot)
 
 FONT, SMALL = AppKit.NSFont.systemFontOfSize_(13), AppKit.NSFont.systemFontOfSize_(10)
+ICONS = PACKAGE / "icons" / "macos"
 CODE = AppKit.NSFont.monospacedSystemFontOfSize_weight_(11.5, 0)
 
 def color(hex_color):
@@ -59,6 +61,31 @@ def native_panel(w, h):
     blur.addSubview_(inside)
     win.setContentView_(blur)
     return win, inside
+
+def edit_menu():
+    """The standard Edit menu. Gemlin shows no menu bar of its own, but on a Mac the ⌘V / ⌘C / ⌘X / ⌘A
+    shortcuts only reach a text box through this menu: without it, pasting into the chat does nothing."""
+    bar, edit = AppKit.NSMenu.alloc().init(), AppKit.NSMenu.alloc().initWithTitle_("Edit")
+    for entry in (("Undo", "undo:", "z"), ("Redo", "redo:", "Z"), None, ("Cut", "cut:", "x"), ("Copy", "copy:", "c"),
+                  ("Paste", "paste:", "v"), ("Select All", "selectAll:", "a")):
+        if entry is None:
+            edit.addItem_(AppKit.NSMenuItem.separatorItem())
+        else:
+            edit.addItemWithTitle_action_keyEquivalent_(*entry)  # no target: goes to whatever has the cursor
+    for title, submenu in (("Gemlin", AppKit.NSMenu.alloc().initWithTitle_("Gemlin")), ("Edit", edit)):
+        bar.addItemWithTitle_action_keyEquivalent_(title, None, "").setSubmenu_(submenu)
+    return bar
+
+def menu_bar_icon():
+    """Gemlin's menu bar mark. As a template image, macOS colors it to match the menu bar."""
+    image = AppKit.NSImage.alloc().initWithSize_((18, 18))
+    for name in ("GemlinTemplate.png", "GemlinTemplate@2x.png"):
+        rep = AppKit.NSImageRep.imageRepWithContentsOfFile_(str(ICONS / name))
+        if rep:
+            rep.setSize_((18, 18))
+            image.addRepresentation_(rep)
+    image.setTemplate_(True)
+    return image
 
 def label(text, size=12, secondary=False, bold=False):
     field = AppKit.NSTextField.labelWithString_(text)
@@ -125,7 +152,7 @@ class MacPet(NSObject):
         whole, usable = screen.frame(), screen.visibleFrame()
         self.top = whole.size.height  # Cocoa counts y up from the bottom; Brain counts down from the top
         self.brain = Brain(me, int(whole.size.width), int(self.top - usable.origin.y), follow)
-        self.images, self.shown, self.chat, self.review, self.look_version = {}, None, None, None, 0
+        self.images, self.shown, self.chat, self.review, self.look_version, self.attention = {}, None, None, None, 0, 0
         self.win = clear_window(SIZE, SIZE + HOP)
         self.view = PetView.alloc().initWithFrame_(NSMakeRect(0, 0, SIZE, SIZE + HOP))
         self.view.owner, self.view.image, self.view.lift = self, None, 0
@@ -135,11 +162,16 @@ class MacPet(NSObject):
         self.bubble.owner, self.bubble.size = self, (10, 10)  # drawRect_ can run before the first bubble
         self.bubble.text, self.bubble.footer = styled("", FONT, INK), None
         self.bubble_win.setContentView_(self.bubble)
+        AppKit.NSApp.setApplicationIconImage_(AppKit.NSImage.alloc().initWithContentsOfFile_(str(ICONS / "Gemlin.icns")))
         self.menu = AppKit.NSMenu.alloc().init()
-        for title, action in (("Chat", "openChat:"), ("Customize me…", "customize:"), ("Stay here", "toggleWander:"),
-                              ("Go to sleep", "goToSleep:")):
-            self.menu.addItemWithTitle_action_keyEquivalent_(title, action, "").setTarget_(self)
-        self.view.setMenu_(self.menu)  # right-click or control-click
+        self.menu.setDelegate_(self)  # rebuilt each time it opens, so checkmarks are current
+        self.view.setMenu_(self.menu)  # right-click or control-click on Gemlin
+        self.status = AppKit.NSStatusBar.systemStatusBar().statusItemWithLength_(AppKit.NSVariableStatusItemLength)
+        self.status.button().setImage_(menu_bar_icon())
+        self.status.button().setToolTip_(me["name"])
+        self.bar_menu = AppKit.NSMenu.alloc().init()
+        self.bar_menu.setDelegate_(self)
+        self.status.setMenu_(self.bar_menu)  # the same menu, in the menu bar
         self.tick_(None)
         self.win.orderFrontRegardless()
         timer = NSTimer.timerWithTimeInterval_target_selector_userInfo_repeats_(TICK / 1000, self, "tick:", None, True)
@@ -166,6 +198,13 @@ class MacPet(NSObject):
         if b.done:
             AppKit.NSApp.terminate_(None)
             return
+        if b.attention != self.attention:  # you opened the Gemlin app or picked Chat: come to the front
+            self.attention = b.attention
+            self.sync_chat()
+            for win in (self.win, self.bubble_win):
+                win.orderFrontRegardless()
+            if self.chat:
+                self.focus(self.chat, self.chat_field)
         if b.look_version != self.look_version:  # new look: rebuild the sprites
             self.images, self.look_version = {}, b.look_version
         if b.frame not in self.images:
@@ -311,25 +350,33 @@ class MacPet(NSObject):
             return True
         return False
 
-    def openChat_(self, item):
-        self.brain.chatting = True
+    def menuNeedsUpdate_(self, menu):  # just before a menu opens: fill it from the Brain's menu
+        menu.removeAllItems()
+        if menu is self.bar_menu:
+            heading = menu.addItemWithTitle_action_keyEquivalent_(self.brain.me["name"], None, "")
+            heading.setEnabled_(False)
+        for entry in self.brain.menu():
+            if entry is None:
+                menu.addItem_(AppKit.NSMenuItem.separatorItem())
+                continue
+            title, action, checked = entry
+            item = menu.addItemWithTitle_action_keyEquivalent_(title, "menuItem:", "")
+            item.setTarget_(self)
+            item.setRepresentedObject_(action)
+            if checked is not None:
+                item.setState_(AppKit.NSControlStateValueOn if checked else AppKit.NSControlStateValueOff)
+
+    def menuItem_(self, item):
+        if page := self.brain.menu_action(item.representedObject()):
+            webbrowser.open(page)
 
     def openLink_(self, button):  # "Get a free key" or "Customize me"
         webbrowser.open(self.brain.button_clicked())
 
-    def customize_(self, item):
-        webbrowser.open(self.brain.button_clicked(customize=True))
-
-    def toggleWander_(self, item):
-        self.brain.toggle_wander()
-        item.setTitle_("Stay here" if self.brain.wander else "Walk around")
-
-    def goToSleep_(self, item):
-        self.brain.quit()
-
 def run(me, follow):
     app = AppKit.NSApplication.sharedApplication()
     app.setActivationPolicy_(AppKit.NSApplicationActivationPolicyAccessory)  # no Dock icon
+    app.setMainMenu_(edit_menu())  # so ⌘V pastes into the chat
     pet = MacPet.alloc().init()
     pet.setup(me, follow)
     if follow:  # Ctrl+C is for gemlin.py; we leave when it does

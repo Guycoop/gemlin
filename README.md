@@ -1,5 +1,7 @@
 # Gemlin: an AI creature that lives on your desktop and teaches itself new tricks
 
+![Gemlin](assets/banner.png)
+
 A tiny AI creature that lives on your desktop, powered by **Gemma 4 via the Gemini API**. It walks along the bottom of your screen, chats with you in its own little window, uses skills to sense your machine (Downloads, big files, busy processes, battery, memory, git projects…), and can **write new skills for itself** when you ask for something it can't do yet. You approve every change.
 
 The default creature is **Gemlin**, a cheeky little gem-flavored creature (a play on Gemma) that loves tidy disks and teases you about your file hoarding. **Design your own** (name, personality, hat, colors) at **[gemlin.dev/create](https://gemlin.dev/create/)**.
@@ -19,14 +21,14 @@ curl -LsSf https://gemlin.dev/install.sh | sh
 powershell -ExecutionPolicy ByPass -c "irm https://gemlin.dev/install.ps1 | iex"
 ```
 
-The installer ([install.sh](site/install.sh), [install.ps1](site/install.ps1)) uses [uv](https://docs.astral.sh/uv/) to install Gemlin with its own copy of Python, so nothing else on your computer changes and you don't need Python or git yourself. It asks whether Gemlin should wake up whenever you log in, then wakes it up. Run it again any time to update.
+The installer ([install.sh](site/install.sh), [install.ps1](site/install.ps1)) uses [uv](https://docs.astral.sh/uv/) to install Gemlin with its own copy of Python, so nothing else on your computer changes and you don't need Python or git yourself. It adds the **Gemlin app** (Applications, Launchpad and Spotlight on a Mac; the Start menu on Windows; your app launcher on Linux), asks whether Gemlin should wake up whenever you log in, then wakes it up. After that you can close the terminal for good.
 
 Then:
 
 1. **Get a key, in Gemlin's window.** The first time, Gemlin walks you through getting a free Gemini API key: click **Get a free key** (Google AI Studio opens), create one, and paste it into Gemlin's chat box. The box hides what you paste. (`gemlin setup` does the same from the terminal.)
 2. **Make it yours.** Click **Customize me** under its chat box (or go to [gemlin.dev/create](https://gemlin.dev/create/)), pick a name, personality, hat and colors, click Copy, and paste the code into Gemlin's chat window.
 
-To remove Gemlin: `gemlin autostart off`, then `uv tool uninstall gemlin`. Your settings and skills are in `~/.gemlin` if you want to delete those too.
+To update: *Check for updates…* in Gemlin's menu, `gemlin update`, or run the install line again. To remove Gemlin: `gemlin uninstall`, then `uv tool uninstall gemlin`. Your settings and skills are in `~/.gemlin` if you want to delete those too.
 
 ### Install from source (to change Gemlin's code)
 
@@ -40,6 +42,35 @@ gemlin start
 ```
 
 Your edits take effect after `gemlin restart`. In a new terminal, run the activate line first.
+
+## No terminal needed
+
+- **The Gemlin app**: open it from Launchpad, Spotlight or Applications (Mac) or the Start menu (Windows). It wakes Gemlin up, or brings up its chat if it's already awake.
+- **Menu bar / system tray**: Gemlin stays out of the Dock and lives in the Mac menu bar (or the Windows system tray, or a Linux panel that supports tray icons) with its whole menu.
+- **Right-click Gemlin** for the same menu:
+
+| Menu | What it does |
+| --- | --- |
+| Chat | Opens the chat box and brings it to the front |
+| Customize me… | Opens gemlin.dev/create; paste the code back into the chat |
+| Walk around ✓ | Untick to make Gemlin stay put |
+| Wake up at login ✓ | Gemlin starts by itself when you log in |
+| What I've been doing… | Opens Gemlin's log |
+| Check for updates… | Updates Gemlin if there's a newer version, then it comes right back |
+| Restart | Starts Gemlin fresh (after you add a skill, for example) |
+| Go to sleep | Quits Gemlin. Open the app to wake it again |
+
+## Gemma on your own computer
+
+Gemlin can think with Gemma running **on your computer** instead of Google's servers: no API key, nothing leaves your machine, and it keeps working when Google's API is having a bad day.
+
+1. Install [LM Studio](https://lmstudio.ai) (or [Ollama](https://ollama.com)) and download a Gemma 4 model in it. `google/gemma-4-e4b` is small and quick; `google/gemma-4-12b` is smarter if you have the memory (16 GB+).
+2. Switch Gemlin over, any one of these ways:
+   - right-click Gemlin (or its menu bar / tray icon) → **Think on this computer**
+   - `gemlin model local` (add `--name google/gemma-4-12b` to pick a model)
+   - type `local` when Gemlin asks for a key
+
+Gemlin starts LM Studio's server for you if it's installed. The first answer takes a little longer while the model loads. `gemlin model` shows where Gemlin thinks and which local models it found; `gemlin model google` switches back.
 
 ## The `gemlin` command
 
@@ -55,6 +86,11 @@ Your edits take effect after `gemlin restart`. In a new terminal, run the activa
 | `gemlin logs` | What Gemlin has been doing (`-f` to keep watching) |
 | `gemlin skills` | Lists its skills. `gemlin skills new NAME` starts one; `gemlin skills add FILE` adds one someone shared |
 | `gemlin autostart on` | Wakes Gemlin up whenever you log in (`off` turns it off) |
+| `gemlin show` | Wakes Gemlin up, or opens its chat if it's awake (what the app does) |
+| `gemlin app` | Adds the Gemlin app to Applications / the Start menu / your launcher (`gemlin app remove` takes it out) |
+| `gemlin model local` | Thinks with Gemma on this computer (LM Studio / Ollama); `gemlin model google` switches back |
+| `gemlin update` | Updates to the newest version (from a source checkout: `git pull` and reinstall, then restart) |
+| `gemlin uninstall` | Puts Gemlin to sleep and removes its app and login item |
 | `gemlin develop IDEA` | Builds a new skill with Gemma's help: try it, change it, save it (see [Extending Gemlin](#extending-gemlin)) |
 
 ## Make your own Gemlin
@@ -123,6 +159,7 @@ Gemma writes the skill. Gemlin checks it against the skill rules and warns you a
 - **`gemlin/develop.py`** is the skill workbench behind `gemlin develop` and `/develop`, and the skill rules and checks every new skill has to pass.
 - **`gemlin/cli.py`** is the `gemlin` command. `gemlin start` runs Gemlin in the background; the desktop pet is its only window.
 - **`gemlin/pet.py`** builds the pet's sprites from the layered art in `gemlin/art/`, recolored with your look, and decides what the pet does. `pet_mac.py` draws it on a Mac (Cocoa) and `pet_tk.py` on Windows and Linux (tkinter). Gemlin and the pet talk over a pipe, one JSON line per message.
+- **`gemlin/system.py`** handles the operating system: the Gemlin app, waking at login, opening files and updates. **`gemlin/icons/`** has the app, menu bar and tray icons for each OS.
 - **`gemlin/paths.py`** says where things live. Everything that's yours is in `~/.gemlin/`: your key (`config.json`), your look, your skills and approvals, and the log.
 
 ## Model
@@ -144,7 +181,7 @@ Key dependencies: the official [`google-genai`](https://googleapis.github.io/pyt
 ## Troubleshooting
 
 - **`gemlin: command not found`**: open a new terminal after installing. Installed from source? Activate the virtual environment first (`source .venv/bin/activate`, or `.venv\Scripts\activate` on Windows), in the gemlin folder.
-- **"rate limited"**: wait about 30 seconds, or switch `MODEL` to `gemma-4-31b-it`. Each skill Gemlin uses counts as an extra request.
+- **"rate limited" or Google errors**: wait about 30 seconds, or switch `MODEL` to `gemma-4-31b-it`, or skip Google entirely: `gemlin model local` (see [Gemma on your own computer](#gemma-on-your-own-computer)). Each skill Gemlin uses counts as an extra request.
 - **"Missing or invalid API key"**: run `gemlin setup` again.
 - **Gemlin didn't appear**: `gemlin logs` shows why. `gemlin status` says whether it's awake. `gemlin setup` checks for the desktop window pieces: on a Mac, `pip install -e .` installs them; on Linux, `sudo apt install python3-tk`.
 - **API error 400 mentioning thinking**: comment out the `thinking_config=` line in `new_chat()` in `gemlin/core.py`.

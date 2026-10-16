@@ -9,12 +9,14 @@ import tkinter as tk
 import webbrowser
 from contextlib import suppress
 
+from .paths import PACKAGE
 from .pet import (HOP, INK, MUTED, PAD, PAPER, SCALE, SIZE, TAIL, TEXT_WIDTH, TICK, Brain, above_pet, beside_pet,
                  bubble_shape, png, review_spot)
 
 CLEAR = "#ff00ff"  # the art never uses magenta, so it can be the see-through color
 FONT, SMALL, CODE = ("Helvetica", 12), ("Helvetica", 9), ("Consolas", 10)
 UI = "Segoe UI" if sys.platform == "win32" else "TkDefaultFont"  # the system's own font for the chat
+ICONS = PACKAGE / "icons"
 
 def system_theme():
     """Light or dark, plus the accent color, so the chat looks like the rest of Windows."""
@@ -71,29 +73,75 @@ class TkPet:
         self.bubble = tk.Canvas(self.bubble_win, bg=self.bg, highlightthickness=0, bd=0)
         self.bubble.pack()
         self.bubble.bind("<Button-1>", lambda e: self.brain.bubble_clicked())
-        self.menu = tk.Menu(root, tearoff=0)
-        self.menu.add_command(label="Chat", command=lambda: setattr(self.brain, "chatting", True))
-        self.menu.add_command(label="Customize me…", command=lambda: webbrowser.open(self.brain.button_clicked(True)))
-        self.menu.add_command(label="Stay here", command=self.toggle_wander)
-        self.menu.add_command(label="Go to sleep", command=self.brain.quit)
+        self.menu, self.attention, self.tray = tk.Menu(root, tearoff=0), 0, None
+        if sys.platform == "win32":
+            with suppress(tk.TclError):
+                root.iconbitmap(default=str(ICONS / "windows" / "Gemlin.ico"))  # Gemlin's icon on its windows
         self.canvas.bind("<ButtonPress-1>", lambda e: self.brain.pick_up(e.x_root, e.y_root))
         self.canvas.bind("<B1-Motion>", lambda e: self.brain.drag(e.x_root, e.y_root))
         self.canvas.bind("<ButtonRelease-1>", lambda e: self.brain.drop())
         for button in ("<Button-2>", "<Button-3>"):  # right-click
-            self.canvas.bind(button, lambda e: self.menu.tk_popup(e.x_root, e.y_root))
+            self.canvas.bind(button, self.popup_menu)
+        self.start_tray()
         self.step()
         root.deiconify()
 
-    def toggle_wander(self):
-        self.brain.toggle_wander()
-        self.menu.entryconfigure(2, label="Stay here" if self.brain.wander else "Walk around")
+    def popup_menu(self, event):  # built fresh each time, so checkmarks are current
+        self.menu.delete(0, "end")
+        for entry in self.brain.menu():
+            if entry is None:
+                self.menu.add_separator()
+                continue
+            title, action, checked = entry
+            if checked is None:
+                self.menu.add_command(label=title, command=lambda a=action: self.do(a))
+            else:
+                self.menu.add_checkbutton(label=title, command=lambda a=action: self.do(a),
+                                          variable=tk.BooleanVar(self.root, value=checked))
+        self.menu.tk_popup(event.x_root, event.y_root)
+
+    def do(self, action):
+        if page := self.brain.menu_action(action):
+            webbrowser.open(page)
+
+    def start_tray(self):
+        """A Gemlin icon in the Windows system tray (or a Linux panel, if pystray is installed there).
+        Left-click opens the chat; right-click has the same menu as Gemlin itself."""
+        try:
+            import pystray
+            from PIL import Image
+        except ImportError:
+            return  # no tray: the right-click menu on Gemlin still has everything
+        def entries():  # read fresh each time the tray menu opens
+            for entry in self.brain.menu():
+                if entry is None:
+                    yield pystray.Menu.SEPARATOR
+                    continue
+                title, action, checked = entry
+                tell = lambda icon, item, a=action: self.brain.events.put({"do": "menu", "action": a})  # noqa: E731
+                yield pystray.MenuItem(title, tell, checked=None if checked is None else (lambda item, c=checked: c),
+                                       default=action == "chat")
+        image = Image.open(ICONS / ("windows/gemlin-32.png" if sys.platform == "win32" else "linux/tray/gemlin-dark-22.png"))
+        with suppress(Exception):  # a desktop without a tray: carry on without it
+            self.tray = pystray.Icon("gemlin", image, self.brain.me["name"], menu=pystray.Menu(entries))
+            self.tray.run_detached()
 
     def step(self):
         b = self.brain
         b.step()
         if b.done:
+            if self.tray:
+                with suppress(Exception):
+                    self.tray.stop()
             self.root.destroy()
             return
+        if b.attention != self.attention:  # opened the Gemlin app, or picked Chat: come to the front
+            self.attention = b.attention
+            self.sync_chat()
+            self.root.lift()
+            if self.chat:
+                self.chat.lift()
+                self.chat.after(60, lambda: (self.chat.focus_force(), self.chat_entry.focus_force()))
         if b.look_version != self.look_version:  # new look: rebuild the sprites
             self.images, self.look_version = {}, b.look_version
         if b.frame not in self.images:
@@ -162,6 +210,12 @@ class TkPet:
                       command=lambda: webbrowser.open(self.brain.button_clicked())).pack(side="right")
             entry.bind("<Return>", lambda e: (self.brain.heard(entry.get()), entry.delete(0, "end")))
             entry.bind("<Escape>", lambda e: setattr(self.brain, "chatting", False))
+            edit = tk.Menu(entry, tearoff=0)  # right-click to paste (Ctrl+V works too)
+            for label, event in (("Cut", "<<Cut>>"), ("Copy", "<<Copy>>"), ("Paste", "<<Paste>>"),
+                                 ("Select all", "<<SelectAll>>")):
+                edit.add_command(label=label, command=lambda ev=event: entry.event_generate(ev))
+            for button in ("<Button-2>", "<Button-3>"):
+                entry.bind(button, lambda e: edit.tk_popup(e.x_root, e.y_root))
             self.chat_entry = entry
             if not self.review:
                 self.chat.after(60, lambda: (self.chat.focus_force(), entry.focus_force()))

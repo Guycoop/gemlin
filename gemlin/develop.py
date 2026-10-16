@@ -110,11 +110,8 @@ def examples():
                        for p in (paths.BUILTIN_SKILLS / "battery_status.py", paths.BUILTIN_SKILLS / "duplicate_downloads.py"))
 
 
-def write(client, request, code=None, ran=None):
-    """Ask Gemma for a skill, or for a change to one. Returns the new code."""
-    from google.genai import types
-
-    from .core import MODEL
+def write(brain, request, code=None, ran=None):
+    """Ask Gemma (on Google or this computer, see models.py) for a skill, or a change to one."""
     if code is None:
         prompt = f"Write a Gemlin skill that does this: {request}"
     else:
@@ -123,9 +120,7 @@ def write(client, request, code=None, ran=None):
                   + f"Change it like this: {request}\nReply with the whole updated file.")
     system = f"You write skills for Gemlin, a friendly AI creature that lives on someone's desktop.\n{RULES}\n\n" \
              f"{examples()}\n\nReply with only the complete file in one ```python code block."
-    reply = client.models.generate_content(model=MODEL, contents=prompt,
-                                           config=types.GenerateContentConfig(system_instruction=system))
-    text = reply.text or ""
+    text = brain.ask(prompt, system)
     found = re.search(r"```(?:python)?\s*\n(.*?)```", text, re.S)
     return textwrap.dedent(found.group(1) if found else text).strip() + "\n"
 
@@ -144,7 +139,7 @@ def show(code, name, problems, warnings):
         print(f"  ! heads up: {warning}")
 
 
-def session(client, request=None, code=None):
+def session(brain, request=None, code=None):
     """The workbench loop: write, check, try, change, save."""
     if code is None:
         print("Let's teach Gemlin something new. Describe the skill, for example:\n"
@@ -156,7 +151,7 @@ def session(client, request=None, code=None):
         if not request:
             return 1
         print("\nGemma is writing it...")
-        code = write(client, request)
+        code = write(brain, request)
     ran = None
     while True:
         name, problems, warnings = check(code)
@@ -185,7 +180,7 @@ def session(client, request=None, code=None):
             if problems and change == hint:
                 change += ": " + "; ".join(problems)
             print("  Gemma is changing it...")
-            code, ran = write(client, change, code, ran), None
+            code, ran = write(brain, change, code, ran), None
         elif choice == "s":
             if problems:
                 print("  Fix the problems first: choose [c] and press Enter.")

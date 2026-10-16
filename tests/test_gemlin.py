@@ -15,7 +15,7 @@ def home(tmp_path, monkeypatch):
     monkeypatch.setattr(gemlin, "REVIEW", tmp_path / "Gemlin_Review")
     monkeypatch.setattr(gemlin, "SKILLS", tmp_path / "skills")
     monkeypatch.setattr(gemlin, "TRUSTED", tmp_path / ".trusted_skills")
-    for name in ("HOME", "CONFIG", "LOOK", "SKILLS", "TRUSTED", "LOG", "PID"):  # ~/.gemlin -> a temp folder
+    for name in ("HOME", "CONFIG", "LOOK", "SKILLS", "TRUSTED", "LOG", "PID", "SHOW"):  # ~/.gemlin -> a temp folder
         monkeypatch.setattr(paths, name, tmp_path / ".gemlin" / getattr(paths, name).name)
     monkeypatch.setattr(gemlin.pet, "SETTINGS", paths.LOOK)
     monkeypatch.setenv("GEMINI_API_KEY", "test-key")  # tests that need no key remove it
@@ -316,9 +316,9 @@ def test_learn_skill_sends_rule_breaking_code_back_to_the_model(home, monkeypatc
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Windows uses the registry; tested by hand")
 def test_autostart_on_and_off(home, tmp_path, capsys):
-    args = cli.argparse.Namespace(action="on")
-    cli.autostart(args, home=tmp_path)
-    path = cli.autostart_file(tmp_path)
+    from gemlin import system
+    cli.autostart(cli.argparse.Namespace(action="on"), home=tmp_path)
+    path = system.autostart_file(tmp_path)
     assert path.exists()
     if sys.platform == "darwin":
         import plistlib
@@ -330,3 +330,78 @@ def test_autostart_on_and_off(home, tmp_path, capsys):
     assert "on" in capsys.readouterr().out.splitlines()[-1]
     cli.autostart(cli.argparse.Namespace(action="off"), home=tmp_path)
     assert not path.exists()
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="the Start menu shortcut needs Windows; tested by hand")
+def test_the_gemlin_app_opens_gemlin(home, tmp_path, monkeypatch):
+    from gemlin import system
+    monkeypatch.setattr(system.subprocess, "run", lambda *a, **kw: None)  # don't register it with the real Mac
+    where = system.install_app(tmp_path)
+    if sys.platform == "darwin":
+        import plistlib
+        info = plistlib.loads((where / "Contents" / "Info.plist").read_bytes())
+        assert info["CFBundleName"] == "Gemlin" and info["LSUIElement"] is True  # no Dock icon
+        launcher = where / "Contents" / "MacOS" / "Gemlin"
+        assert launcher.stat().st_mode & 0o111 and "-m gemlin show" in launcher.read_text()
+        assert (where / "Contents" / "Resources" / "Gemlin.icns").exists()
+    else:
+        assert "-m gemlin show" in where.read_text()
+        assert (tmp_path / ".local/share/icons/hicolor/48x48/apps/gemlin.png").exists()
+    system.remove_app(tmp_path)
+    assert not where.exists()
+
+
+def test_show_opens_the_chat_when_awake(home, monkeypatch):
+    monkeypatch.setattr(cli, "running", lambda: object())
+    assert cli.main(["show"]) == 0 and paths.SHOW.exists()
+
+
+def test_version_comparison():
+    from gemlin import system
+    assert system.newer("0.10.0", "0.9.9") and not system.newer("0.3.0", "0.3.0") and not system.newer("0.2.9", "0.3.0")
+
+
+def test_update_from_source_pulls_and_reinstalls(home, monkeypatch, capsys):
+    ran = []
+    monkeypatch.setattr(cli.subprocess, "run", lambda cmd, **kw: ran.append(cmd) or
+                        cli.subprocess.CompletedProcess(cmd, 0, stdout="Already up to date.", stderr=""))
+    assert cli.main(["update"]) == 0  # the tests run from a git checkout
+    assert ran[0][:2] == ["git", "-C"] and ran[0][-2:] == ["pull", "--ff-only"]
+    assert ran[1][1:5] == ["-m", "pip", "install", "-q"]
+    assert "Up to date" in capsys.readouterr().out
+
+
+def test_gemlin_model_switches_brains(home, monkeypatch, capsys):
+    from gemlin import models
+
+    class FakeLocal:
+        model, label = "google/gemma-4-e4b", "google/gemma-4-e4b on this computer (LM Studio)"
+
+        def __init__(self, name=None):
+            pass
+    monkeypatch.setattr(models, "Local", FakeLocal)
+    assert cli.main(["model", "local"]) == 0
+    assert models.source() == "local" and paths.config()["local_model"] == "google/gemma-4-e4b"
+    assert cli.main(["model", "google"]) == 0 and models.source() == "google"
+    def missing(name=None):
+        raise models.LocalError("I can't find Gemma on this computer.")
+    monkeypatch.setattr(models, "Local", missing)
+    assert cli.main(["model", "local"]) == 1 and models.source() == "google"
+    assert "can't find Gemma" in capsys.readouterr().out
+
+
+def test_the_windows_shortcut_script_quotes_its_paths(monkeypatch):
+    from gemlin import system
+    monkeypatch.setattr(system, "python", lambda windowless=True: r"C:\Users\O'Neil\pythonw.exe")
+    script = system.shortcut_script(r"C:\Users\O'Neil\Start Menu\Gemlin.lnk")
+    assert "CreateShortcut('C:\\Users\\O''Neil\\Start Menu\\Gemlin.lnk')" in script  # ' doubled, inside quotes
+    assert "TargetPath = 'C:\\Users\\O''Neil\\pythonw.exe'" in script and "$args" not in script
+
+
+def test_app_install_failure_is_explained_not_a_traceback(home, monkeypatch, capsys):
+    from gemlin import system
+    def broken(home=None):
+        raise cli.subprocess.CalledProcessError(1, "powershell", stderr="Access is denied.")
+    monkeypatch.setattr(system, "install_app", broken)
+    assert cli.main(["app"]) == 1
+    assert "Couldn't add the Gemlin app: Access is denied." in capsys.readouterr().out

@@ -13,9 +13,10 @@ core.py and the pet talk with one JSON message per line:
   from the pet (stdout): {"say": "something you typed"}, {"answer": 1, "yes": true} or {"quit": true}
 """
 # ruff: noqa: E401
-import base64, functools, json, queue, random, re, struct, sys, threading, zlib
+import base64, functools, json, queue, random, re, struct, sys, threading, webbrowser, zlib
 from contextlib import suppress
 
+from . import models, paths
 from .paths import ART, LOOK as SETTINGS
 DEFAULTS = {
     "name": "Gemlin",
@@ -225,6 +226,7 @@ class Brain:
       needs_key:   the chat box is for pasting an API key (hidden text, "Get a free key" button)
       button:      (label, url) for the button under the chat box
       look_version: goes up when the look changes, so windows rebuild their sprites
+      attention:   goes up when you ask for Gemlin (the app, the menu bar): bring the chat to the front
       done:        time to close"""
 
     def __init__(self, me, screen_w, floor, follow):
@@ -235,7 +237,7 @@ class Brain:
         self.tick, self.blink_at, self.talk_until, self.hide_at, self.quit_at = 0, 60, 0, None, None
         self.mode, self.status, self.pages, self.page_count, self.seconds = "wander", None, [], 0, None
         self.grab, self.done, self.leaving, self.asking = None, False, False, None
-        self.needs_key, self.button, self.look_version = False, ("Customize me", CREATOR), 0
+        self.needs_key, self.button, self.look_version, self.attention = False, ("Customize me", CREATOR), 0, 0
         self.chatting = follow  # with gemlin.py running, the chat box is open from the start
         self.bubble, self.frame, self.lift = None, None, 0
         if follow:
@@ -271,11 +273,16 @@ class Brain:
             self.say("oops! something went wrong. Look in the terminal.", seconds=5)
         elif do == "bye":
             self.sleep()
+        elif do == "bye_with":  # going to sleep with something to say (switching brains)
+            self.sleep(str(event.get("text") or "bye!"))
         elif do == "need_key":
             self.needs_key, self.chatting = True, True
             self.button = ("Get a free key", str(event.get("url") or "https://aistudio.google.com/apikey"))
         elif do == "key_ok":
             self.needs_key, self.button = False, ("Customize me", CREATOR)
+        elif do == "menu":  # picked in the Windows tray, which runs in its own thread
+            if page := self.menu_action(event.get("action")):
+                webbrowser.open(page)
         elif do == "look":  # a new look was saved: dress up
             self.me, self.art = load_settings(), Sprites(load_settings())
             self.look_version += 1
@@ -300,10 +307,10 @@ class Brain:
         self.hide_at = self.tick + int(reading * 1000 / TICK)
         self.talk_until = self.tick + int(min(len(page) / 15, 4) * 1000 / TICK)
 
-    def sleep(self):
+    def sleep(self, goodbye="bye!"):
         if not self.leaving:
             self.leaving, self.quit_at = True, self.tick + 1500 // TICK
-            self.say("bye!", seconds=2)
+            self.say(goodbye, seconds=2)
 
     # --- you, with the mouse and the chat box ---
     def pick_up(self, x, y):
@@ -357,15 +364,95 @@ class Brain:
             return CREATOR
         return self.button[1]
 
+    def menu(self):
+        """The right-click menu, also used for the menu bar (Mac) and the tray (Windows).
+        Each entry is (label, action, checked or None); None draws a line."""
+        from . import system
+        return [("Chat", "chat", None), ("Customize me…", "customize", None), None,
+                ("Walk around", "wander", self.wander), ("Wake up at login", "autostart", system.autostart_enabled()),
+                ("Think on this computer", "local", models.source() == "local"), None,
+                ("What I've been doing…", "log", None), ("Check for updates…", "update", None),
+                ("Restart", "restart", None), None, ("Go to sleep", "sleep", None)]
+
+    def menu_action(self, action):
+        """Do what a menu entry says. Returns a web page to open, if there is one."""
+        from . import system
+        if action == "chat":
+            self.show()
+        elif action == "customize":
+            return self.button_clicked(customize=True)
+        elif action == "wander":
+            self.toggle_wander()
+        elif action == "autostart":
+            on = not system.autostart_enabled()
+            system.set_autostart(on)
+            self.say("I'll wake up whenever you log in." if on else "OK, I won't wake up at login.", seconds=4)
+        elif action == "log":
+            if paths.LOG.exists():
+                system.open_file(paths.LOG)
+            else:
+                self.say("Nothing to show yet. I keep a log when I'm started with gemlin start.", seconds=5)
+        elif action == "update":
+            self.set_mode("think", "checking for updates...")
+            threading.Thread(target=self.check_for_updates, daemon=True).start()
+        elif action == "local":  # switch brains: Gemma here (LM Studio / Ollama) or on Google
+            if models.source() == "local":
+                models.use("google")
+                system.run_in_background("restart")
+                self.sleep("Switching to Google's servers. Be right back!")
+            else:
+                self.set_mode("think", "looking for Gemma on this computer...")
+                threading.Thread(target=self.go_local, daemon=True).start()
+        elif action == "restart":
+            system.run_in_background("restart")
+            self.sleep("Be right back!")  # the restart starts a fresh Gemlin; this one bows out
+        elif action == "sleep":
+            self.quit()
+        return None
+
+    def go_local(self):  # in a thread: finding (or starting) LM Studio can take a few seconds
+        from . import system
+        try:
+            found = models.Local()
+        except models.LocalError as e:
+            self.events.put({"do": "say", "text": str(e)})
+            return
+        models.use("local", found.model)
+        system.run_in_background("restart")
+        self.events.put({"do": "bye_with", "text": f"Switching to {found.model} on this computer. Be right back!"})
+
+    def check_for_updates(self):  # in a thread, so Gemlin keeps moving while it asks GitHub
+        from . import __version__, system
+        if system.installed_from_source():
+            text = "Pulling the newest code. I'll be right back!"
+            system.run_in_background("update")
+        elif (latest := system.latest_version()) is None:
+            text = "I couldn't reach GitHub to check. Try again in a bit."
+        elif not system.newer(latest):
+            text = f"I'm up to date (version {__version__})."
+        else:
+            text = f"Updating to version {latest}. I'll be right back!"
+            system.run_in_background("update")
+        self.events.put({"do": "say", "text": text})
+
+    def show(self):  # you asked for Gemlin: open the chat and bring it to the front
+        self.chatting = True
+        self.attention += 1
+
     def toggle_wander(self):
         self.wander, self.target = not self.wander, None
 
     # --- 25 times a second ---
     def step(self):
         self.tick += 1
+        if self.tick % 12 == 0 and paths.SHOW.exists():  # someone opened the Gemlin app while we're awake
+            paths.SHOW.unlink(missing_ok=True)
+            self.show()
         while not self.events.empty():
             self.handle(self.events.get())
-        if self.quit_at and self.tick >= self.quit_at:
+        if self.quit_at and self.tick >= self.quit_at and not self.done:
+            if self.follow:
+                print(json.dumps({"quit": True}), flush=True)  # so Gemlin's brain goes to sleep too
             self.done = True
         if self.hide_at and self.tick >= self.hide_at:
             self.next_page()

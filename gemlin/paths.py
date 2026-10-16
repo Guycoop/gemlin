@@ -20,6 +20,7 @@ SKILLS = HOME / "skills"             # your skills: learned by Gemlin, written b
 TRUSTED = HOME / "trusted_skills"    # fingerprints of skill code you approved
 LOG = HOME / "gemlin.log"            # what Gemlin printed while running in the background
 PID = HOME / "gemlin.pid"            # which process is Gemlin, so `gemlin stop` can find it
+SHOW = HOME / "show"                 # `gemlin show` leaves this for the pet: "open your chat window"
 
 
 def api_key():

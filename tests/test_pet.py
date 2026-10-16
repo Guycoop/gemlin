@@ -171,3 +171,64 @@ def test_going_to_sleep_tells_gemlin(capsys):
     b.follow = True
     b.quit()
     assert json.loads(capsys.readouterr().out) == {"quit": True} and b.done
+
+
+@pytest.fixture
+def fake_system(monkeypatch):
+    """Stand-ins for the OS bits, so menu tests don't touch your login items or start anything."""
+    from gemlin import system
+    calls = {"autostart": False, "background": [], "opened": []}
+    monkeypatch.setattr(system, "autostart_enabled", lambda home=None: calls["autostart"])
+    monkeypatch.setattr(system, "set_autostart", lambda on, home=None: calls.update(autostart=on))
+    monkeypatch.setattr(system, "run_in_background", lambda *args: calls["background"].append(args))
+    monkeypatch.setattr(system, "open_file", lambda path: calls["opened"].append(path))
+    return calls
+
+
+def test_the_menu_has_everything(fake_system):
+    actions = [entry[1] for entry in brain().menu() if entry]
+    assert actions == ["chat", "customize", "wander", "autostart", "local", "log", "update", "restart", "sleep"]
+
+
+def test_menu_actions(fake_system, tmp_path, monkeypatch):
+    b = brain()
+    b.menu_action("chat")
+    assert b.chatting and b.attention == 1
+    assert b.menu_action("customize") == pet.CREATOR
+    b.menu_action("wander")
+    assert not b.wander
+    b.menu_action("autostart")
+    assert fake_system["autostart"] is True and dict(b.menu()[4:5] and [(e[1], e[2]) for e in b.menu() if e])["autostart"]
+    monkeypatch.setattr(pet.paths, "LOG", tmp_path / "gemlin.log")
+    b.menu_action("log")  # no log yet: says so instead of opening nothing
+    assert not fake_system["opened"] and "Nothing to show" in b.bubble[0]
+    (tmp_path / "gemlin.log").write_text("hi")
+    b.menu_action("log")
+    assert fake_system["opened"] == [tmp_path / "gemlin.log"]
+    b.menu_action("restart")
+    assert fake_system["background"] == [("restart",)] and b.leaving
+
+
+@pytest.mark.parametrize("source, latest, says, updates", [
+    (True, "9.9.9", "Pulling the newest code", True),
+    (False, None, "couldn't reach", False),
+    (False, "0.0.1", "up to date", False),
+    (False, "99.0.0", "Updating to version 99.0.0", True),
+])
+def test_check_for_updates(fake_system, monkeypatch, source, latest, says, updates):
+    from gemlin import system
+    monkeypatch.setattr(system, "installed_from_source", lambda: source)
+    monkeypatch.setattr(system, "latest_version", lambda timeout=6: latest)
+    b = brain()
+    b.check_for_updates()
+    assert says in b.events.get()["text"]
+    assert (("update",) in fake_system["background"]) == updates
+
+
+def test_opening_the_app_while_awake_brings_up_the_chat(tmp_path, monkeypatch):
+    monkeypatch.setattr(pet.paths, "SHOW", tmp_path / "show")
+    b = brain()
+    (tmp_path / "show").touch()
+    for _ in range(12):
+        b.step()
+    assert b.chatting and b.attention == 1 and not (tmp_path / "show").exists()

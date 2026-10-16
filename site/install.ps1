@@ -6,8 +6,9 @@
 #   1. Gets uv (https://docs.astral.sh/uv), a tool that installs Python apps, if you don't have it.
 #   2. Uses uv to install Gemlin with its own copy of Python, so nothing else on your computer changes.
 #   3. Makes the `gemlin` command work in new terminals.
-#   4. Wakes Gemlin up, and asks whether it should wake up whenever you log in.
-# Run it again any time to update Gemlin. To remove it: gemlin autostart off; uv tool uninstall gemlin
+#   4. Adds Gemlin to the Start menu.
+#   5. Wakes Gemlin up, and asks whether it should wake up whenever you log in.
+# Run it again any time to update Gemlin. To remove it: gemlin uninstall
 # Keep this file plain ASCII: Windows PowerShell 5.1 reads BOM-less files as Windows-1252,
 # where UTF-8 symbols like a check mark turn into stray quote characters and break parsing.
 $ErrorActionPreference = "Stop"
@@ -41,6 +42,8 @@ $ErrorActionPreference = "Stop"
 $bin = (& $uv tool dir --bin).Trim()
 $gemlin = Join-Path $bin "gemlin.exe"
 Write-Host "  [ok] Installed $(& $gemlin --version)"
+$app = & $gemlin app
+if ($LASTEXITCODE -eq 0) { Write-Host "  [ok] $app" } else { Write-Host "  [!] $app" }
 
 if ($env:GEMLIN_NO_START) { return }
 
@@ -50,6 +53,7 @@ if ($answer -notmatch "^[nN]") { & $gemlin autostart on }
 Write-Host ""
 & $gemlin start
 Write-Host ""
-Write-Host "  Next time, open a new terminal and use:  gemlin start, gemlin stop, gemlin --help"
-Write-Host "  Make Gemlin yours: click `"Customize me`" under its chat box, or visit https://gemlin.dev/create"
+Write-Host "  You can close this window. Gemlin lives in the system tray and on your desktop:"
+Write-Host "  open Gemlin from the Start menu to wake it, and right-click Gemlin (or its tray icon) for everything else."
+Write-Host "  Make it yours: click `"Customize me`" under its chat box, or visit https://gemlin.dev/create"
 Write-Host ""

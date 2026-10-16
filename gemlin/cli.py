@@ -181,7 +181,9 @@ def stop(args, quiet=False):
         if not quiet:
             print(f"{name()} is already asleep.")
         return 0
-    family = [proc, *proc.children(recursive=True)]  # Gemlin and its desktop window
+    # Gemlin and its desktop window. Not this command, though: "Think on this computer" and the
+    # other menu items start `gemlin restart` from the pet, and it used to stop itself with them.
+    family = [p for p in [proc, *proc.children(recursive=True)] if p.pid != os.getpid()]
     for p in family:
         with suppress(psutil.Error):
             p.terminate()

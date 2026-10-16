@@ -42,10 +42,32 @@ def use(where, model=None):
 
 # ---------- Google ----------
 
+def google_client(key, timeout=30):
+    """A Gemini client that gives up quickly: if Google's servers are down, Gemlin says so in
+    seconds instead of retrying for a minute while you stare at a thinking pet."""
+    from google import genai
+    from google.genai import types
+    return genai.Client(api_key=key, http_options=types.HttpOptions(
+        timeout=timeout * 1000, retry_options=types.HttpRetryOptions(attempts=2, initial_delay=1, max_delay=2)))
+
+
+def google_trouble(e):
+    """What to tell you when Google's servers fail, or None if it's not that kind of failure."""
+    import httpx
+    from google.genai import errors
+    if isinstance(e, (httpx.TransportError, OSError)):
+        why = "I couldn't reach Google's Gemini servers (no internet, or they're not answering)."
+    elif isinstance(e, errors.APIError) and (e.code in (429, 503) or (e.code or 0) >= 500):
+        why = ("Google's Gemini servers are busy right now (too many requests)." if e.code == 429
+               else f"Google's Gemini servers are having trouble right now (error {e.code}).")
+    else:
+        return None
+    return f"{why} Try again in a bit, or run Gemma on this computer: Think on this computer in my menu (or gemlin model local)."
+
+
 class Google:
     def __init__(self, key, model):
-        from google import genai
-        self.client, self.model = genai.Client(api_key=key), model
+        self.client, self.model = google_client(key), model
         self.label = f"{model} on Google"
 
     def new_chat(self, system, tools, history=None):

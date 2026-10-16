@@ -23,6 +23,14 @@ PID = HOME / "gemlin.pid"            # which process is Gemlin, so `gemlin stop`
 SHOW = HOME / "show"                 # `gemlin show` leaves this for the pet: "open your chat window"
 
 
+def launch_dir():
+    """Where Gemlin starts its own background processes from. Not the folder you happen to be in:
+    `python -m gemlin` looks there first, so an old gemlin.py in it (say, an old checkout) would
+    run instead of this Gemlin."""
+    HOME.mkdir(parents=True, exist_ok=True)
+    return str(HOME)
+
+
 def api_key():
     """Your Gemini API key: from GEMINI_API_KEY if it's set, otherwise the one `gemlin setup` saved."""
     if os.environ.get("GEMINI_API_KEY"):

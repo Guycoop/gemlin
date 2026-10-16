@@ -37,7 +37,8 @@ def run_in_background(*args):
         detach = {"start_new_session": True}
     paths.HOME.mkdir(parents=True, exist_ok=True)
     with paths.LOG.open("a", encoding="utf-8") as log:
-        subprocess.Popen(command(*args), stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT, **detach)
+        subprocess.Popen(command(*args), cwd=paths.launch_dir(), stdin=subprocess.DEVNULL, stdout=log,
+                         stderr=subprocess.STDOUT, **detach)
 
 
 def open_file(path):
@@ -88,7 +89,7 @@ def set_autostart(on, home=None):
     path.parent.mkdir(parents=True, exist_ok=True)
     if sys.platform == "darwin":
         import plistlib
-        path.write_bytes(plistlib.dumps({"Label": LABEL, "ProgramArguments": command("start"), "RunAtLoad": True,
+        path.write_bytes(plistlib.dumps({"Label": LABEL, "ProgramArguments": command("start"), "RunAtLoad": True, "WorkingDirectory": paths.launch_dir(),
                                          "AbandonProcessGroup": True,  # Gemlin keeps running after start exits
                                          "StandardOutPath": str(paths.LOG), "StandardErrorPath": str(paths.LOG)}))
     else:
@@ -99,7 +100,7 @@ def set_autostart(on, home=None):
 
 def desktop_entry(action):
     return ("[Desktop Entry]\nType=Application\nName=Gemlin\nComment=A tiny AI creature that lives on your desktop\n"
-            f"Exec={subprocess.list2cmdline(command(action))}\nIcon=gemlin\nCategories=Utility;\n"
+            f"Exec={subprocess.list2cmdline(command(action))}\nPath={paths.launch_dir()}\nIcon=gemlin\nCategories=Utility;\n"
             "X-GNOME-Autostart-enabled=true\n")
 
 
@@ -129,7 +130,7 @@ def install_app(home=None):
             "CFBundleShortVersionString": __version__, "LSUIElement": True,  # no Dock icon: Gemlin lives in the menu bar
         }))
         launcher = contents / "MacOS" / "Gemlin"
-        launcher.write_text(f'#!/bin/sh\nexec "{python()}" -m gemlin show\n', encoding="utf-8")
+        launcher.write_text(f'#!/bin/sh\ncd "{paths.launch_dir()}"\nexec "{python()}" -m gemlin show\n', encoding="utf-8")
         launcher.chmod(0o755)
         shutil.copy(ICONS / "macos" / "Gemlin.icns", contents / "Resources" / "Gemlin.icns")
         register = Path("/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/"
@@ -158,6 +159,7 @@ def shortcut_script(where):
         return "'" + str(text).replace("'", "''") + "'"
     return (f"$s = (New-Object -ComObject WScript.Shell).CreateShortcut({quoted(where)}); "
             f"$s.TargetPath = {quoted(python())}; $s.Arguments = '-m gemlin show'; "
+            f"$s.WorkingDirectory = {quoted(paths.launch_dir())}; "
             f"$s.IconLocation = {quoted(ICONS / 'windows' / 'Gemlin.ico')}; $s.Description = 'Gemlin'; $s.Save()")
 
 

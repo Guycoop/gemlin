@@ -405,3 +405,26 @@ def test_app_install_failure_is_explained_not_a_traceback(home, monkeypatch, cap
     monkeypatch.setattr(system, "install_app", broken)
     assert cli.main(["app"]) == 1
     assert "Couldn't add the Gemlin app: Access is denied." in capsys.readouterr().out
+
+
+def test_gemlin_never_starts_itself_from_the_current_folder(home, monkeypatch, tmp_path):
+    """An old gemlin.py in the folder you're in (an old checkout) must not run instead of Gemlin."""
+    import subprocess
+    old = tmp_path / "old-checkout"
+    old.mkdir()
+    (old / "gemlin.py").write_text("print('OLD STARTER')\n")
+    monkeypatch.chdir(old)
+    done = subprocess.run([sys.executable, "-m", "gemlin", "--version"], cwd=paths.launch_dir(),
+                          capture_output=True, text=True)
+    assert "OLD STARTER" not in done.stdout and done.stdout.startswith("gemlin ")
+    launched = []
+
+    class FakeGemlin:
+        pid = 1
+
+        def poll(self):
+            return None
+    monkeypatch.setattr(cli.subprocess, "Popen", lambda cmd, **kw: launched.append(kw.get("cwd")) or FakeGemlin())
+    monkeypatch.setattr(cli.time, "sleep", lambda s: None)
+    cli.main(["start"])
+    assert launched == [str(paths.HOME)]

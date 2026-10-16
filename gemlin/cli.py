@@ -155,7 +155,8 @@ def start(args):
         detach = {"creationflags": subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP}
     else:  # its own session, so closing this terminal doesn't stop it
         detach = {"start_new_session": True}
-    proc = subprocess.Popen([sys.executable, "-m", "gemlin", "run", "--background"], stdin=subprocess.DEVNULL,
+    proc = subprocess.Popen([sys.executable, "-m", "gemlin", "run", "--background"], cwd=paths.launch_dir(),
+                            stdin=subprocess.DEVNULL,
                             stdout=log, stderr=subprocess.STDOUT, **detach)
     paths.PID.write_text(str(proc.pid))
     time.sleep(2)  # long enough to catch an early problem (a bad key, a missing piece)

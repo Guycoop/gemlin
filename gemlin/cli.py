@@ -564,7 +564,8 @@ def main(argv=None):
     commands.add_parser("uninstall", help="put Gemlin to sleep and remove its app and login item").set_defaults(fn=uninstall)
     # diagnostic command to help troubleshooting
     p = commands.add_parser("doctor", help="diagnose common problems and suggest fixes")
-    p.set_defaults(fn=(lambda args: __import__("gemlin.doctor").doctor(args)))
+    # Lazy-import the doctor module so running `gemlin --help` stays fast.
+    p.set_defaults(fn=(lambda args: __import__("importlib").import_module("gemlin.doctor").doctor(args)))
     p = commands.add_parser("run")  # used by `gemlin start`; not shown in help
     p.add_argument("--background", action="store_true")
     p.set_defaults(fn=run)

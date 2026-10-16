@@ -62,6 +62,20 @@ def native_panel(w, h):
     win.setContentView_(blur)
     return win, inside
 
+def edit_menu():
+    """The standard Edit menu. Gemlin shows no menu bar of its own, but on a Mac the ⌘V / ⌘C / ⌘X / ⌘A
+    shortcuts only reach a text box through this menu: without it, pasting into the chat does nothing."""
+    bar, edit = AppKit.NSMenu.alloc().init(), AppKit.NSMenu.alloc().initWithTitle_("Edit")
+    for entry in (("Undo", "undo:", "z"), ("Redo", "redo:", "Z"), None, ("Cut", "cut:", "x"), ("Copy", "copy:", "c"),
+                  ("Paste", "paste:", "v"), ("Select All", "selectAll:", "a")):
+        if entry is None:
+            edit.addItem_(AppKit.NSMenuItem.separatorItem())
+        else:
+            edit.addItemWithTitle_action_keyEquivalent_(*entry)  # no target: goes to whatever has the cursor
+    for title, submenu in (("Gemlin", AppKit.NSMenu.alloc().initWithTitle_("Gemlin")), ("Edit", edit)):
+        bar.addItemWithTitle_action_keyEquivalent_(title, None, "").setSubmenu_(submenu)
+    return bar
+
 def menu_bar_icon():
     """Gemlin's menu bar mark. As a template image, macOS colors it to match the menu bar."""
     image = AppKit.NSImage.alloc().initWithSize_((18, 18))
@@ -362,6 +376,7 @@ class MacPet(NSObject):
 def run(me, follow):
     app = AppKit.NSApplication.sharedApplication()
     app.setActivationPolicy_(AppKit.NSApplicationActivationPolicyAccessory)  # no Dock icon
+    app.setMainMenu_(edit_menu())  # so ⌘V pastes into the chat
     pet = MacPet.alloc().init()
     pet.setup(me, follow)
     if follow:  # Ctrl+C is for gemlin.py; we leave when it does

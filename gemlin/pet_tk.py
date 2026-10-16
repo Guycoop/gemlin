@@ -210,6 +210,12 @@ class TkPet:
                       command=lambda: webbrowser.open(self.brain.button_clicked())).pack(side="right")
             entry.bind("<Return>", lambda e: (self.brain.heard(entry.get()), entry.delete(0, "end")))
             entry.bind("<Escape>", lambda e: setattr(self.brain, "chatting", False))
+            edit = tk.Menu(entry, tearoff=0)  # right-click to paste (Ctrl+V works too)
+            for label, event in (("Cut", "<<Cut>>"), ("Copy", "<<Copy>>"), ("Paste", "<<Paste>>"),
+                                 ("Select all", "<<SelectAll>>")):
+                edit.add_command(label=label, command=lambda ev=event: entry.event_generate(ev))
+            for button in ("<Button-2>", "<Button-3>"):
+                entry.bind(button, lambda e: edit.tk_popup(e.x_root, e.y_root))
             self.chat_entry = entry
             if not self.review:
                 self.chat.after(60, lambda: (self.chat.focus_force(), entry.focus_force()))

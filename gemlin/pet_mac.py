@@ -94,9 +94,22 @@ def label(text, size=12, secondary=False, bold=False):
         field.setTextColor_(AppKit.NSColor.secondaryLabelColor())
     return field
 
+SHORTCUTS = {"v": "paste:", "c": "copy:", "x": "cut:", "a": "selectAll:", "z": "undo:", "Z": "redo:"}
+
 class KeyWindow(AppKit.NSWindow):  # borderless windows can't take typing unless they say so
     def canBecomeKeyWindow(self):
         return True
+
+    def performKeyEquivalent_(self, event):
+        # ⌘V / ⌘C / ⌘X / ⌘A / ⌘Z straight to the text box. The Edit menu should do this, but a menu
+        # bar app doesn't always get its menu's shortcuts, and then pasting silently did nothing.
+        flags = event.modifierFlags() & AppKit.NSEventModifierFlagDeviceIndependentFlagsMask
+        if flags & AppKit.NSEventModifierFlagCommand and not flags & (AppKit.NSEventModifierFlagControl
+                                                                      | AppKit.NSEventModifierFlagOption):
+            action = SHORTCUTS.get(event.charactersIgnoringModifiers() or "")
+            if action and AppKit.NSApp.sendAction_to_from_(action, None, self):
+                return True
+        return objc.super(KeyWindow, self).performKeyEquivalent_(event)
 
 class FlippedView(AppKit.NSView):  # y points down, like everywhere else in Gemlin
     def isFlipped(self):

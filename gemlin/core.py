@@ -82,7 +82,8 @@ def next_line(*sources):
 def start_pet():
     """Open the desktop pet (pet.py) as its own little program."""
     global pet_proc
-    pet_proc = subprocess.Popen([sys.executable, "-m", "gemlin.pet", "--follow"], stdin=subprocess.PIPE,
+    pet_proc = subprocess.Popen([sys.executable, "-m", "gemlin.pet", "--follow"], cwd=paths.launch_dir(),
+                                stdin=subprocess.PIPE,
                                 stdout=subprocess.PIPE, text=True, encoding="utf-8")
     threading.Thread(target=read_pet, args=(pet_proc,), daemon=True).start()
 

@@ -42,3 +42,11 @@ jobs:
           $gemlin = Join-Path $env:USERPROFILE ".local\bin\gemlin.exe"
           & $gemlin --version
           & $gemlin skills
+      - name: install.ps1 again, on Windows PowerShell 5.1 (the default for irm | iex)
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          $env:GEMLIN_SOURCE = "file:///" + ($PWD.Path -replace '\\', '/')
+          $env:GEMLIN_NO_START = "1"
+          ./site/install.ps1
+          & (Join-Path $env:USERPROFILE ".local\bin\gemlin.exe") --version
